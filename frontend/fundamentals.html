@@ -1,0 +1,315 @@
+<!--
+  KOSPI Fundamentals Widget
+  ─────────────────────────
+  Paste this into a WordPress "Custom HTML" block.
+  Change API_BASE below to point to your Vultr server.
+-->
+<style>
+  #kospi-widget * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  #kospi-widget {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    color: #222;
+  }
+
+  #kospi-widget .kw-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  #kospi-widget .kw-title {
+    font-size: 18px;
+    font-weight: 700;
+  }
+  #kospi-widget .kw-date {
+    font-size: 12px;
+    color: #888;
+  }
+
+  #kospi-widget .kw-controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  #kospi-widget .kw-controls select,
+  #kospi-widget .kw-controls input {
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+    outline: none;
+    background: #fff;
+  }
+  #kospi-widget .kw-controls select:focus,
+  #kospi-widget .kw-controls input:focus {
+    border-color: #3b82f6;
+  }
+  #kospi-widget .kw-count {
+    margin-left: auto;
+    font-size: 12px;
+    color: #888;
+  }
+
+  #kospi-widget .kw-table-wrap {
+    overflow-x: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+  }
+  #kospi-widget table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 640px;
+  }
+  #kospi-widget thead th {
+    background: #f8fafc;
+    padding: 9px 12px;
+    text-align: right;
+    font-size: 12px;
+    font-weight: 600;
+    color: #555;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  #kospi-widget thead th:first-child,
+  #kospi-widget thead th.kw-left { text-align: left; }
+  #kospi-widget thead th:hover { background: #f0f4f8; }
+  #kospi-widget thead th .kw-arrow { margin-left: 4px; color: #aaa; }
+  #kospi-widget thead th.kw-sorted .kw-arrow { color: #3b82f6; }
+
+  #kospi-widget tbody tr:hover { background: #f5f8ff; }
+  #kospi-widget tbody tr:nth-child(even) { background: #fafafa; }
+  #kospi-widget tbody tr:nth-child(even):hover { background: #f0f5ff; }
+  #kospi-widget td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #f0f0f0;
+    text-align: right;
+    white-space: nowrap;
+  }
+  #kospi-widget td.kw-left { text-align: left; }
+  #kospi-widget td.kw-rank { color: #aaa; font-size: 12px; }
+  #kospi-widget td.kw-ticker { font-family: monospace; color: #555; }
+  #kospi-widget td.kw-name { font-weight: 500; }
+  #kospi-widget td.kw-sector {
+    font-size: 12px;
+    color: #555;
+  }
+
+  #kospi-widget .kw-per { font-weight: 500; }
+  #kospi-widget .per-low    { color: #16a34a; }
+  #kospi-widget .per-mid    { color: #ca8a04; }
+  #kospi-widget .per-high   { color: #dc2626; }
+
+  #kospi-widget .kw-loading,
+  #kospi-widget .kw-error {
+    padding: 40px;
+    text-align: center;
+    color: #888;
+  }
+  #kospi-widget .kw-error { color: #dc2626; }
+</style>
+
+<div id="kospi-widget">
+  <div class="kw-header">
+    <span class="kw-title">KOSPI 종목 PER / PBR</span>
+    <span class="kw-date" id="kw-date"></span>
+  </div>
+
+  <div class="kw-controls">
+    <select id="kw-sector">
+      <option value="">전체 섹터</option>
+    </select>
+    <input id="kw-search" type="text" placeholder="종목명 검색..." style="width:160px">
+    <span class="kw-count" id="kw-count"></span>
+  </div>
+
+  <div id="kw-status" class="kw-loading">데이터 로딩 중...</div>
+
+  <div class="kw-table-wrap" id="kw-table-wrap" style="display:none">
+    <table>
+      <thead>
+        <tr id="kw-thead"></tr>
+      </thead>
+      <tbody id="kw-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+(function () {
+  // ── Config ─────────────────────────────────────────────────────────────────
+  const API_BASE = "http://YOUR_SERVER_IP:8000";  // ← change this
+
+  // ── Column definitions ─────────────────────────────────────────────────────
+  const COLS = [
+    { key: "#",        label: "#",        align: "right", sortable: false },
+    { key: "티커",     label: "티커",     align: "left",  sortable: true  },
+    { key: "종목명",   label: "종목명",   align: "left",  sortable: true  },
+    { key: "섹터",     label: "섹터",     align: "left",  sortable: true  },
+    { key: "시가총액(억)", label: "시가총액", align: "right", sortable: true  },
+    { key: "PER",      label: "PER",      align: "right", sortable: true  },
+    { key: "PBR",      label: "PBR",      align: "right", sortable: true  },
+    { key: "EPS",      label: "EPS",      align: "right", sortable: true  },
+    { key: "BPS",      label: "BPS",      align: "right", sortable: true  },
+  ];
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  let allRows = [];
+  let sortKey = "시가총액(억)";
+  let sortAsc = false;
+
+  // ── Fetch data ─────────────────────────────────────────────────────────────
+  async function init() {
+    try {
+      const [fundRes, secRes] = await Promise.all([
+        fetch(`${API_BASE}/api/fundamentals?limit=2000`),
+        fetch(`${API_BASE}/api/sectors`),
+      ]);
+
+      if (!fundRes.ok) throw new Error(`API error: ${fundRes.status}`);
+
+      const fund = await fundRes.json();
+      const sec  = await secRes.json();
+
+      allRows = fund.data;
+
+      // Set reference date
+      document.getElementById("kw-date").textContent =
+        `기준일: ${fund.date.slice(0,4)}-${fund.date.slice(4,6)}-${fund.date.slice(6,8)}`;
+
+      // Populate sector dropdown
+      const sel = document.getElementById("kw-sector");
+      sec.sectors.forEach(s => {
+        const opt = document.createElement("option");
+        opt.value = s;
+        opt.textContent = s;
+        sel.appendChild(opt);
+      });
+
+      // Build header
+      buildHeader();
+
+      // Initial render
+      document.getElementById("kw-status").style.display = "none";
+      document.getElementById("kw-table-wrap").style.display = "";
+      render();
+
+    } catch (e) {
+      document.getElementById("kw-status").className = "kw-error";
+      document.getElementById("kw-status").textContent =
+        "데이터를 불러오지 못했습니다. (" + e.message + ")";
+    }
+  }
+
+  // ── Build header ───────────────────────────────────────────────────────────
+  function buildHeader() {
+    const tr = document.getElementById("kw-thead");
+    COLS.forEach(col => {
+      const th = document.createElement("th");
+      if (col.align === "left") th.className = "kw-left";
+      if (col.sortable) {
+        th.innerHTML = `${col.label}<span class="kw-arrow"></span>`;
+        th.addEventListener("click", () => {
+          if (sortKey === col.key) {
+            sortAsc = !sortAsc;
+          } else {
+            sortKey = col.key;
+            sortAsc = col.key !== "시가총액(억)"; // cap defaults desc, rest asc
+          }
+          render();
+        });
+      } else {
+        th.textContent = col.label;
+      }
+      if (col.key === sortKey) {
+        th.classList.add("kw-sorted");
+      }
+      tr.appendChild(th);
+    });
+  }
+
+  // ── Render table ───────────────────────────────────────────────────────────
+  function render() {
+    const sector = document.getElementById("kw-sector").value;
+    const search = document.getElementById("kw-search").value.trim().toLowerCase();
+
+    // Filter
+    let rows = allRows.filter(r => {
+      if (sector && r["섹터"] !== sector) return false;
+      if (search && !r["종목명"].toLowerCase().includes(search)) return false;
+      return true;
+    });
+
+    // Sort
+    if (sortKey && sortKey !== "#") {
+      rows = [...rows].sort((a, b) => {
+        const av = a[sortKey], bv = b[sortKey];
+        if (typeof av === "number") return sortAsc ? av - bv : bv - av;
+        return sortAsc
+          ? String(av).localeCompare(String(bv), "ko")
+          : String(bv).localeCompare(String(av), "ko");
+      });
+    }
+
+    // Update sort arrows in header
+    document.querySelectorAll("#kw-thead th").forEach((th, i) => {
+      const col = COLS[i];
+      if (!col.sortable) return;
+      th.classList.toggle("kw-sorted", col.key === sortKey);
+      const arrow = th.querySelector(".kw-arrow");
+      if (arrow) {
+        arrow.textContent = col.key === sortKey ? (sortAsc ? " ▲" : " ▼") : " ▲▼";
+      }
+    });
+
+    // Update count
+    document.getElementById("kw-count").textContent = `${rows.length}개 종목`;
+
+    // Render rows
+    const tbody = document.getElementById("kw-tbody");
+    tbody.innerHTML = "";
+    rows.forEach((r, i) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = [
+        `<td class="kw-left kw-rank">${i + 1}</td>`,
+        `<td class="kw-left kw-ticker">${r["티커"]}</td>`,
+        `<td class="kw-left kw-name">${r["종목명"]}</td>`,
+        `<td class="kw-left kw-sector">${r["섹터"]}</td>`,
+        `<td>${fmtCap(r["시가총액(억)"])}</td>`,
+        `<td class="kw-per ${perClass(r["PER"])}">${r["PER"].toFixed(2)}</td>`,
+        `<td>${r["PBR"].toFixed(2)}</td>`,
+        `<td>${fmtNum(r["EPS"])}</td>`,
+        `<td>${fmtNum(r["BPS"])}</td>`,
+      ].join("");
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ── Formatters ─────────────────────────────────────────────────────────────
+  function fmtCap(억) {
+    if (억 >= 10000) return (억 / 10000).toFixed(1) + "조";
+    return 억.toLocaleString() + "억";
+  }
+  function fmtNum(n) {
+    return Number.isFinite(n) ? n.toLocaleString() : "-";
+  }
+  function perClass(per) {
+    if (per < 10)  return "per-low";
+    if (per < 25)  return "per-mid";
+    return "per-high";
+  }
+
+  // ── Event listeners ────────────────────────────────────────────────────────
+  document.getElementById("kw-sector").addEventListener("change", render);
+  document.getElementById("kw-search").addEventListener("input", render);
+
+  init();
+})();
+</script>
