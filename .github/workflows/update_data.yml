@@ -1,0 +1,47 @@
+name: Update KOSPI Fundamentals
+
+on:
+  schedule:
+    # Runs at 9:00 AM UTC = 6:00 PM KST, Monday to Friday
+    # KRX market closes at 3:30 PM KST, so data is ready by then
+    - cron: '0 9 * * 1-5'
+
+  # Also allows you to trigger this manually from the GitHub website
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to commit and push kospi.json back to the repo
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Download your repository onto GitHub's machine
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Install Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'           # cache packages so it runs faster next time
+
+      # Step 3: Install the required Python packages
+      - name: Install dependencies
+        run: pip install pykrx pandas
+
+      # Step 4: Run your script — this creates docs/kospi.json
+      - name: Generate kospi.json
+        run: python generate_json.py
+
+      # Step 5: Save the result back to the repository
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/kospi.json
+          # Only commit if the file actually changed
+          git diff --staged --quiet || git commit -m "Update KOSPI data $(date +'%Y-%m-%d')"
+          git push
