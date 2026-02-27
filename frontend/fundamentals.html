@@ -11,6 +11,8 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-size: 14px;
     color: #222;
+    width: 100%;
+    max-width: 1200px;
   }
 
   #kospi-widget .kw-header {
@@ -107,6 +109,33 @@
   #kospi-widget .per-mid    { color: #ca8a04; }
   #kospi-widget .per-high   { color: #dc2626; }
 
+  #kospi-widget .kw-filter-label {
+    font-size: 12px;
+    color: #666;
+    white-space: nowrap;
+  }
+  #kospi-widget .kw-filter-input {
+    width: 70px;
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+    outline: none;
+    background: #fff;
+    text-align: right;
+  }
+  #kospi-widget .kw-filter-input:focus { border-color: #3b82f6; }
+  #kospi-widget .kw-reset {
+    padding: 6px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 12px;
+    background: #f8fafc;
+    cursor: pointer;
+    color: #555;
+  }
+  #kospi-widget .kw-reset:hover { background: #f0f4f8; }
+
   #kospi-widget .kw-loading,
   #kospi-widget .kw-error {
     padding: 40px;
@@ -130,6 +159,24 @@
     <span class="kw-count" id="kw-count"></span>
   </div>
 
+  <div class="kw-controls">
+    <span class="kw-filter-label">PER</span>
+    <input class="kw-filter-input" id="kw-per-min" type="number" min="0" placeholder="최소">
+    <span class="kw-filter-label">~</span>
+    <input class="kw-filter-input" id="kw-per-max" type="number" min="0" placeholder="최대">
+
+    <span class="kw-filter-label" style="margin-left:12px">PBR</span>
+    <input class="kw-filter-input" id="kw-pbr-min" type="number" min="0" step="0.1" placeholder="최소">
+    <span class="kw-filter-label">~</span>
+    <input class="kw-filter-input" id="kw-pbr-max" type="number" min="0" step="0.1" placeholder="최대">
+
+    <span class="kw-filter-label" style="margin-left:12px">시가총액</span>
+    <input class="kw-filter-input" id="kw-cap-min" type="number" min="0" placeholder="최소" style="width:80px">
+    <span class="kw-filter-label">조 이상</span>
+
+    <button class="kw-reset" id="kw-reset" type="button">초기화</button>
+  </div>
+
   <div id="kw-status" class="kw-loading">데이터 로딩 중...</div>
 
   <div class="kw-table-wrap" id="kw-table-wrap" style="display:none">
@@ -142,171 +189,4 @@
   </div>
 </div>
 
-<script>
-(function () {
-  // ── Config ─────────────────────────────────────────────────────────────────
-  // Replace with your actual GitHub Pages URL, e.g.:
-  // "https://yourname.github.io/etf_search/kospi.json"
-  const DATA_URL = "https://YOUR_GITHUB_USERNAME.github.io/YOUR_REPO_NAME/kospi.json";
-
-  // ── Column definitions ─────────────────────────────────────────────────────
-  const COLS = [
-    { key: "#",        label: "#",        align: "right", sortable: false },
-    { key: "티커",     label: "티커",     align: "left",  sortable: true  },
-    { key: "종목명",   label: "종목명",   align: "left",  sortable: true  },
-    { key: "섹터",     label: "섹터",     align: "left",  sortable: true  },
-    { key: "시가총액(억)", label: "시가총액", align: "right", sortable: true  },
-    { key: "PER",      label: "PER",      align: "right", sortable: true  },
-    { key: "PBR",      label: "PBR",      align: "right", sortable: true  },
-    { key: "EPS",      label: "EPS",      align: "right", sortable: true  },
-    { key: "BPS",      label: "BPS",      align: "right", sortable: true  },
-  ];
-
-  // ── State ──────────────────────────────────────────────────────────────────
-  let allRows = [];
-  let sortKey = "시가총액(억)";
-  let sortAsc = false;
-
-  // ── Fetch data ─────────────────────────────────────────────────────────────
-  async function init() {
-    try {
-      const res = await fetch(DATA_URL);
-      if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
-      const fund = await res.json();
-
-      allRows = fund.data;
-
-      // Set reference date
-      document.getElementById("kw-date").textContent =
-        `기준일: ${fund.date.slice(0,4)}-${fund.date.slice(4,6)}-${fund.date.slice(6,8)}`;
-
-      // Extract unique sectors from the data and populate dropdown
-      const sectors = [...new Set(allRows.map(r => r["섹터"]).filter(Boolean))].sort();
-      const sel = document.getElementById("kw-sector");
-      sectors.forEach(s => {
-        const opt = document.createElement("option");
-        opt.value = s;
-        opt.textContent = s;
-        sel.appendChild(opt);
-      });
-
-      // Build header
-      buildHeader();
-
-      // Initial render
-      document.getElementById("kw-status").style.display = "none";
-      document.getElementById("kw-table-wrap").style.display = "";
-      render();
-
-    } catch (e) {
-      document.getElementById("kw-status").className = "kw-error";
-      document.getElementById("kw-status").textContent =
-        "데이터를 불러오지 못했습니다. (" + e.message + ")";
-    }
-  }
-
-  // ── Build header ───────────────────────────────────────────────────────────
-  function buildHeader() {
-    const tr = document.getElementById("kw-thead");
-    COLS.forEach(col => {
-      const th = document.createElement("th");
-      if (col.align === "left") th.className = "kw-left";
-      if (col.sortable) {
-        th.innerHTML = `${col.label}<span class="kw-arrow"></span>`;
-        th.addEventListener("click", () => {
-          if (sortKey === col.key) {
-            sortAsc = !sortAsc;
-          } else {
-            sortKey = col.key;
-            sortAsc = col.key !== "시가총액(억)"; // cap defaults desc, rest asc
-          }
-          render();
-        });
-      } else {
-        th.textContent = col.label;
-      }
-      if (col.key === sortKey) {
-        th.classList.add("kw-sorted");
-      }
-      tr.appendChild(th);
-    });
-  }
-
-  // ── Render table ───────────────────────────────────────────────────────────
-  function render() {
-    const sector = document.getElementById("kw-sector").value;
-    const search = document.getElementById("kw-search").value.trim().toLowerCase();
-
-    // Filter
-    let rows = allRows.filter(r => {
-      if (sector && r["섹터"] !== sector) return false;
-      if (search && !r["종목명"].toLowerCase().includes(search)) return false;
-      return true;
-    });
-
-    // Sort
-    if (sortKey && sortKey !== "#") {
-      rows = [...rows].sort((a, b) => {
-        const av = a[sortKey], bv = b[sortKey];
-        if (typeof av === "number") return sortAsc ? av - bv : bv - av;
-        return sortAsc
-          ? String(av).localeCompare(String(bv), "ko")
-          : String(bv).localeCompare(String(av), "ko");
-      });
-    }
-
-    // Update sort arrows in header
-    document.querySelectorAll("#kw-thead th").forEach((th, i) => {
-      const col = COLS[i];
-      if (!col.sortable) return;
-      th.classList.toggle("kw-sorted", col.key === sortKey);
-      const arrow = th.querySelector(".kw-arrow");
-      if (arrow) {
-        arrow.textContent = col.key === sortKey ? (sortAsc ? " ▲" : " ▼") : " ▲▼";
-      }
-    });
-
-    // Update count
-    document.getElementById("kw-count").textContent = `${rows.length}개 종목`;
-
-    // Render rows
-    const tbody = document.getElementById("kw-tbody");
-    tbody.innerHTML = "";
-    rows.forEach((r, i) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = [
-        `<td class="kw-left kw-rank">${i + 1}</td>`,
-        `<td class="kw-left kw-ticker">${r["티커"]}</td>`,
-        `<td class="kw-left kw-name">${r["종목명"]}</td>`,
-        `<td class="kw-left kw-sector">${r["섹터"]}</td>`,
-        `<td>${fmtCap(r["시가총액(억)"])}</td>`,
-        `<td class="kw-per ${perClass(r["PER"])}">${r["PER"].toFixed(2)}</td>`,
-        `<td>${r["PBR"].toFixed(2)}</td>`,
-        `<td>${fmtNum(r["EPS"])}</td>`,
-        `<td>${fmtNum(r["BPS"])}</td>`,
-      ].join("");
-      tbody.appendChild(tr);
-    });
-  }
-
-  // ── Formatters ─────────────────────────────────────────────────────────────
-  function fmtCap(억) {
-    if (억 >= 10000) return (억 / 10000).toFixed(1) + "조";
-    return 억.toLocaleString() + "억";
-  }
-  function fmtNum(n) {
-    return Number.isFinite(n) ? n.toLocaleString() : "-";
-  }
-  function perClass(per) {
-    if (per < 10)  return "per-low";
-    if (per < 25)  return "per-mid";
-    return "per-high";
-  }
-
-  // ── Event listeners ────────────────────────────────────────────────────────
-  document.getElementById("kw-sector").addEventListener("change", render);
-  document.getElementById("kw-search").addEventListener("input", render);
-
-  init();
-})();
-</script>
+<script src="https://seokleejh.github.io/etf_search/kospi-widget.js"></script>
