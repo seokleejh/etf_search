@@ -30,7 +30,7 @@ jobs:
 
       # Step 3: Install the required Python packages
       - name: Install dependencies
-        run: pip install pykrx pandas
+        run: pip install -r requirements.txt
 
       # Step 4: Run your script — this creates docs/kospi.json
       - name: Generate kospi.json
