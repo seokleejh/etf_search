@@ -31,6 +31,29 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # Step 3.5: Patch pykrx for KRX API compatibility
+      # KRX changed their API response format; pykrx's holiday detection breaks
+      - name: Patch pykrx
+        run: |
+          python << 'EOF'
+          import pykrx.stock.stock_api as sa
+          with open(sa.__file__, 'r', encoding='utf-8') as f:
+              src = f.read()
+          # Fix 1: sector classifications - 종가 column no longer in KRX response
+          src = src.replace(
+              'if (df["종가"] == 0).all(axis=None):',
+              'if "종가" in df.columns and (df["종가"] == 0).all(axis=None):'
+          )
+          # Fix 2: fundamental data - BPS/PER/etc. columns no longer in KRX response
+          src = src.replace(
+              'holiday = (df[["BPS", "PER", "PBR", "EPS", "DIV", "DPS"]] == 0).all(axis=None)',
+              'holiday = {"BPS","PER","PBR","EPS","DIV","DPS"}.issubset(df.columns) and (df[["BPS","PER","PBR","EPS","DIV","DPS"]]==0).all(axis=None)'
+          )
+          with open(sa.__file__, 'w', encoding='utf-8') as f:
+              f.write(src)
+          print("pykrx patched successfully")
+          EOF
+
       # Step 4: Run your script — this creates docs/kospi.json
       - name: Generate kospi.json
         run: python generate_json.py
