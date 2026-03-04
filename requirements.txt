@@ -1,4 +1,4 @@
-pykrx
+git+https://github.com/sharebook-kr/pykrx.git
 pandas
 tabulate
 fastapi
