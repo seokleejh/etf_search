@@ -32,6 +32,23 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # Step 3.5: Patch pykrx for KRX API compatibility
+      # KRX removed the 종가 column from sector data; pykrx hasn't updated yet
+      - name: Patch pykrx
+        run: |
+          python - << 'EOF'
+          import pykrx.stock.stock_api as sa
+          with open(sa.__file__, 'r', encoding='utf-8') as f:
+              src = f.read()
+          fixed = src.replace(
+              'if (df["종가"] == 0).all(axis=None):',
+              'if "종가" in df.columns and (df["종가"] == 0).all(axis=None):'
+          )
+          with open(sa.__file__, 'w', encoding='utf-8') as f:
+              f.write(fixed)
+          print("pykrx patched successfully")
+          EOF
+
       # Step 4: Run your script — this creates docs/kospi.json
       - name: Generate kospi.json
         run: python generate_json.py
