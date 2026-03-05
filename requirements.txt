@@ -4,3 +4,4 @@ pandas
 tabulate
 fastapi
 uvicorn
+lxml
